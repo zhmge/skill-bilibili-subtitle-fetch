@@ -25,7 +25,7 @@
 ## 快速开始
 
 ```bash
-BILI_SESSDATA="<你的值>" node scripts/fetch_subtitles.js "<BV号或视频URL>" --out "<输出目录>"
+BILI_SESSDATA="<值>" node scripts/fetch_subtitles.js "<BV号或视频URL>" --out "<输出目录>"
 ```
 
 ### 怎么拿到 SESSDATA
@@ -69,6 +69,13 @@ BILI_SESSDATA="<值>" node scripts/fetch_subtitles.js "<URL>" \
 | `_manifest.json` | 断点续跑台账 |
 
 `.srt` 是唯一的交付物。脚本不会额外生成 `.txt`，也不合并分P。
+
+## 相关 skill
+
+本 skill 只负责把字幕取到本地，不负责整理内容。
+
+- **[srt-course-outline](https://github.com/zhmge/skill-srt-course-outline)** —— 把抓到的 `.srt` 整理为飞书文档中的课程大纲框架，每个标题带 B 站精准空降时间链接。需要把字幕变成可跟看的大纲或笔记骨架时用它。
+- **[zhmge/skills](https://github.com/zhmge/skills)** —— skill 索引仓库，收录本 skill、上述大纲 skill，以及后续整理中的其他 skill。
 
 ## 反直觉之处：接口会返回他人的字幕
 
