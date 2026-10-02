@@ -165,7 +165,10 @@ async function getVideoInfo(bvid, referer) {
 /* ==================== 目标清单归一化 ====================
  * 把「多分P 的 pages」与「合集的 sections[].episodes[]」统一成同一种目标结构，
  * 后续主循环不必区分两者。
- *   { page 全局序号, part 标题, cid, bvid, aid, referer, section|null, indexInSection }
+ *   { page 全局序号, part 标题, cid, bvid, aid, referer, url 来源链接, section|null, indexInSection }
+ *
+ * referer 与 url 是两件事：referer 只用于请求头，url 是要写进 srt 首行的可点击地址。
+ * 多分P 的 url 必须带 ?p=N（referer 不带），否则每个分P 的链接都会跳到默认分P。
  */
 
 /** 去掉标题里对所在章节而言冗余的合集前缀（"数据结构合集 - 树(...)" → "树(...)"） */
@@ -175,13 +178,19 @@ function cleanTitle(t) {
 
 /** 多分P：一个 bvid，N 个 cid */
 function normalizeParts(info, bvid) {
-  return (info.pages || []).map(p => ({
+  const pages = info.pages || [];
+  const multi = pages.length > 1;
+  return pages.map(p => ({
     page: p.page,
     part: cleanTitle(p.part),
     cid: p.cid,
     bvid,
     aid: info.aid,
     referer: `https://www.bilibili.com/video/${bvid}/`,
+    // 来源链接写进 srt 首行；多分P 必须带 ?p=N，单分P 用规范短地址
+    url: multi
+      ? `https://www.bilibili.com/video/${bvid}/?p=${p.page}`
+      : `https://www.bilibili.com/video/${bvid}/`,
     section: null,
     indexInSection: p.page
   }));
@@ -206,6 +215,8 @@ function normalizeSeason(season) {
         bvid: e.bvid,
         aid: e.aid,
         referer: `https://www.bilibili.com/video/${e.bvid}/`,
+        // 合集每集都是独立视频，链接就是它自己的 BV，不带 ?p
+        url: `https://www.bilibili.com/video/${e.bvid}/`,
         section: secInfo,
         indexInSection: ei + 1
       });
@@ -300,10 +311,13 @@ async function downloadSubtitle(subtitleUrl, referer) {
 
 /* ============================ 落盘 ============================ */
 
-/** 只写 SRT（交付产物只有 SRT） */
-function writeSrt(outDir, base, body) {
+/** 只写 SRT（交付产物只有 SRT）。首行是该目标的来源链接，紧随一个空行。 */
+function writeSrt(outDir, base, body, sourceUrl) {
   fs.mkdirSync(outDir, { recursive: true });
-  let srt = '', count = 0;
+  // 来源链接独占一行且后面必须紧跟一个空行：下游解析器（srt-course-outline 等）
+  // 靠这个空行把链接行与第 1 个字幕块隔开。若省掉空行，按「空行分块」的解析器
+  // 会把链接行与第 1 块并成一块，从而静默丢掉第 1 块。
+  let srt = sourceUrl ? String(sourceUrl).trim() + '\n\n' : '', count = 0;
   body.forEach(it => {
     const text = String(it.content || '').trim();
     if (!text) return;
@@ -495,6 +509,7 @@ async function main() {
     rec.bvid = p.bvid;
     rec.aid = p.aid;
     rec.part = p.part;
+    rec.url = p.url;
     if (p.section) { rec.section = p.section.title; rec.indexInSection = p.indexInSection; }
 
     await sleep(args.interval);
@@ -552,7 +567,7 @@ async function main() {
     try {
       const body = await downloadSubtitle(pick.subtitle_url, p.referer);
       const { dir, base } = targetOutput(outDir, info.title, p, isSeason);
-      const files = writeSrt(dir, base, body);
+      const files = writeSrt(dir, base, body, p.url);
       rec.status = 'ok';
       rec.lang = pick.lan; rec.lang_doc = pick.lan_doc;
       rec.count = files.count;
@@ -576,6 +591,7 @@ async function main() {
     }
   }
 
+  backfillUrls(bucket);
   writeIndex(outDir, bucket, bvid);
 
   // 单分P 模式：没拿到就算失败（退出码 6）
@@ -585,7 +601,23 @@ async function main() {
   return summary(stat, noSubParts, poisonedParts, t0, args, manifestPath, 0, bucket);
 }
 
-/** 写索引表（只链 SRT） */
+/** 兼容旧 manifest：给缺 url 的记录补上来源链接（老版本没写这个字段）。
+ *  多分P 与合集的判别不依赖 bucket.kind，只看记录：所有记录共用同一个 bvid
+ *  且不止一条 → 是多分P（链接必须带 ?p=N）；bvid 各异 → 是合集（每集独立视频）。 */
+function backfillUrls(bucket) {
+  const rows = Object.values(bucket.parts || {});
+  if (!rows.length) return;
+  const distinct = new Set(rows.map(r => r.bvid).filter(Boolean));
+  const multi = distinct.size === 1 && rows.length > 1;
+  for (const r of rows) {
+    if (r.url || !r.bvid) continue;
+    r.url = multi
+      ? `https://www.bilibili.com/video/${r.bvid}/?p=${r.page}`
+      : `https://www.bilibili.com/video/${r.bvid}/`;
+  }
+}
+
+/** 写索引表（链 SRT 与本集视频） */
 function writeIndex(outDir, bucket, bvid) {
   const rows = Object.values(bucket.parts).sort((a, b) => a.page - b.page);
   const ok = rows.filter(r => r.status === 'ok');
@@ -598,9 +630,9 @@ function writeIndex(outDir, bucket, bvid) {
     `- 更新于：${new Date().toISOString()}`,
     `- 已下载：${ok.length} / 已记录：${rows.length}`,
     '',
-    '| 序号 | 章节 | 标题 | 状态 | 语言 | 条数 | 文件 |',
-    '|---|---|---|---|---|---|---|',
-    ...rows.map(r => `| ${r.page} | ${r.section || '—'} | ${r.part} | ${LABEL[r.status] || r.status} | ${r.lang_doc || '—'} | ${r.count || '—'} | ${r.srt ? `[srt](${encodeURI(r.srt)})` : '—'} |`)
+    '| 序号 | 章节 | 标题 | 状态 | 语言 | 条数 | 视频 | 文件 |',
+    '|---|---|---|---|---|---|---|---|',
+    ...rows.map(r => `| ${r.page} | ${r.section || '—'} | ${r.part} | ${LABEL[r.status] || r.status} | ${r.lang_doc || '—'} | ${r.count || '—'} | ${r.url ? `[视频](${r.url})` : '—'} | ${r.srt ? `[srt](${encodeURI(r.srt)})` : '—'} |`)
   ];
   fs.writeFileSync(path.join(outDir, '_index.md'), lines.join('\n'), 'utf8');
 }

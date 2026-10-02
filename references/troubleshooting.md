@@ -113,7 +113,9 @@ picked up. Cross-check the real episode count with `seasons_archives_list` — s
 ## Empty or short output for a part
 
 - A part whose SRT has very few cues is usually a short clip, not a failure.
-  Check the line count against the part's duration.
+  Check the line count against the part's duration. Subtract the first two lines
+  (the source link and the blank line after it) before comparing — they are not
+  cues, and a line count that ignores them will look off by two.
 - AI subtitles are segmented into individual cues; hundreds of cues for a
   20-minute lecture is normal.
 
@@ -125,3 +127,7 @@ picked up. Cross-check the real episode count with `seasons_archives_list` — s
   site change.
 - Do not lower `--interval` to finish sooner.
 - Do not add a `.txt` export. SRT is the only deliverable.
+- Do not strip or relocate the source link on line 1 of a `.srt`, and do not drop
+  the blank line that follows it. Downstream skills depend on both; removing the
+  blank line makes block-splitting parsers drop the first cue silently, which
+  looks like a short clip rather than a bug.

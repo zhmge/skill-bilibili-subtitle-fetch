@@ -110,6 +110,9 @@ the `.srt` files are, and which parts came back empty or need a re-run.
   and parts with genuinely no subtitles are reported differently; keep them apart.
 - **`.srt` is the only deliverable.** Do not add `.txt`, do not "helpfully" merge
   parts into one plain-text file.
+- **Keep the source link as line 1 of every `.srt`**, followed by a blank line.
+  It is what lets a downstream skill produce correct jump links. Do not strip it,
+  do not move it into a comment, and do not drop the blank line after it.
 
 ## Output
 
@@ -119,8 +122,21 @@ Into `<dir>`:
 |---|---|
 | `<视频标题>_P<n>_<分P名>.srt` | multi-part video: the deliverable, one per part, flat in `<dir>` |
 | `<NN_章节名>/<NN_标题>.srt` | 合集: one subfolder per chapter, one file per episode |
-| `_index.md` | table of every item: chapter, status, language, line count, link to its `.srt` |
+| `_index.md` | table of every item: chapter, status, language, line count, link to the video and to its `.srt` |
 | `_manifest.json` | progress ledger — this is what makes a re-run cheap |
+
+**Every `.srt` starts with its own source link.** Line 1 is the bare URL of that
+part (or of that episode, for a 合集), line 2 is blank, and the normal `1`-indexed
+cues follow. Downstream skills read this line to build jump-to-timestamp links
+instead of guessing a video id out of the file name — so a file name needs no BV
+id at all.
+
+Line 2 must stay blank. Parsers that split SRT into blank-line-separated blocks
+would otherwise glue the link onto the first cue and silently drop it.
+
+For a multi-part video the link carries `?p=N`, because without it every part
+would jump to the default part. A 合集 episode does not: each episode is its own
+video, so its own bare BV id is already the full address.
 
 A 合集 therefore lands as a small chapter tree; a multi-part video stays flat.
 Both shapes can share one `<dir>` — the ledger keys them separately.
