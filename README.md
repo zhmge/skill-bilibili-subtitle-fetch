@@ -25,7 +25,7 @@
 ## 快速开始
 
 ```bash
-BILI_SESSDATA="<值>" node scripts/fetch_subtitles.js "<BV号或视频URL>" --out "<输出目录>"
+BILI_SESSDATA="<你的值>" node scripts/fetch_subtitles.js "<BV号或视频URL>" --out "<输出目录>"
 ```
 
 ### 怎么拿到 SESSDATA
