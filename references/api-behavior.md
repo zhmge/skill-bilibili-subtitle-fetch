@@ -120,6 +120,43 @@ on the first attempt. Re-run before investigating.
 A third failure shape exists: `subtitle_url` present but **empty string**. Treat
 it as a verification failure and retry — the same code path already handles it.
 
+## Empty list, poisoning, and actual existence
+
+Three answers hide behind request 2, and only two of them are evidence:
+
+- An **own-hit** (path prefix `<aid><cid>`) is the only "yes": this part really
+  has subtitles.
+- An **empty list** (`subtitles: []`) is the only "no": as close as the endpoint
+  gets to "this video has no subtitles".
+- A **poisoned response** is evidence about *nothing* for this part. It is
+  undetermined — not yes, not no. Reading a poisoned-heavy run as "the course
+  has no subtitles" is the most expensive misread of this API.
+
+When a run comes back all-poisoned (or a poisoned/empty mix), existence is still
+open. Two checks narrow it down:
+
+**Cross-stack probe.** Node (OpenSSL TLS) and curl.exe (Schannel TLS) present
+different TLS fingerprints, and Bilibili's classifier can treat the same cid
+differently per stack. In the reference case, one part was poisoned on every
+Node attempt while curl consistently got an empty list, and two other parts were
+the exact opposite. But curl gets poisoned too — parts returned another video's
+subtitles through curl as well. Only when *both* stacks return an empty list for
+a cid is "no subtitles" well-supported.
+
+**Asset age.** AI subtitles (`ai-zh`) are generated per video asset, and in the
+reference case they existed only for assets re-encoded in a 2023-12 ~ 2024-06
+window. A course uploaded in 2019 whose assets were never re-encoded has no AI
+subtitles on any part, no matter how many retries. `pages[].ctime` comes free
+with the `view` response, so this can be checked before spending a single
+player/v2 request.
+
+Reference case in full: a 314-part course from 2019. Node produced 800+
+responses across the whole range without a single own-hit; a curl sweep of every
+part (two probes each, 628 requests) agreed: exactly 4 parts (P1/P2/P3/P103)
+have AI subtitles — all four inside the re-encode window — and 310 parts have
+none, matching ground truth from the user's real-browser extension. Storm-level
+poisoning (~50–75%, peaks ~92%) delayed that answer but did not change it.
+
 ## Which subtitle to pick
 
 `pickSubtitle` prefers `zh-CN` (human-made) → `ai-zh` (AI-generated) → any `zh*`

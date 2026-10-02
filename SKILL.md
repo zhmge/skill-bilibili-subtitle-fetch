@@ -69,6 +69,14 @@ BILI_SESSDATA="<value>" node "<skill-dir>/scripts/fetch_subtitles.js" "<URL>" \
 If the probe reports no subtitles anywhere, stop and tell the user — no amount
 of retrying will produce subtitles that do not exist.
 
+The probe's conclusion line distinguishes three outcomes — subtitles found /
+undetermined (parts poisoned) / genuinely none. Only the third licenses "no
+subtitles"; a poisoned result is undetermined, and the response is to re-probe
+later, not to conclude. For a multi-part video the header also prints an
+asset-age line built from `pages[].ctime`: AI subtitles have only been observed
+on assets re-encoded in 2023-12 ~ 2024-06, so an older course can legitimately
+have none at all. That is a fact to report, not a bug to fix.
+
 **4. Fetch.** Resolve `<skill-dir>` to wherever this skill actually lives; do not
 assume the working directory is the skill directory.
 
@@ -108,6 +116,10 @@ the `.srt` files are, and which parts came back empty or need a re-run.
   never went out and every result is meaningless.
 - **A part that failed is not a part that is missing.** Parts failing verification
   and parts with genuinely no subtitles are reported differently; keep them apart.
+- **Poisoned is not missing.** A part — or a whole scan — that came back poisoned
+  is *undetermined*, not subtitle-less. Never report "no subtitles" from a
+  poisoned state; re-probe later, or cross-check with a second TLS stack (curl)
+  before concluding anything.
 - **`.srt` is the only deliverable.** Do not add `.txt`, do not "helpfully" merge
   parts into one plain-text file.
 - **Keep the source link as line 1 of every `.srt`**, followed by a blank line.

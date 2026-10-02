@@ -450,6 +450,20 @@ async function main() {
     });
   } else {
     console.log(`  类型: 多分P 视频  共 ${info.videos} 个分P`);
+    // 资产年代预检：AI 字幕只观测到存在于 2023-12~2024-06 重编码窗口的资产上。
+    // pages[].ctime 由 view 接口免费提供，这里零成本提示「整门课可能没有字幕」的事实。
+    if (info.videos > 1) {
+      const ct = (info.pages || []).map(p => p.ctime).filter(Boolean);
+      if (ct.length && ct.length === info.pages.length) {
+        const pre = ct.filter(t => t < 1672531200).length;                    // 2023-01-01 前
+        const win = ct.filter(t => t >= 1701388800 && t < 1719792000).length; // AI 字幕重编码窗口
+        const post = ct.length - pre - win;
+        console.log(`  资产年代: 早期资产(2023前) ${pre} 个 · AI字幕窗口重编码(2023-12~2024-06) ${win} 个 · 更新 ${post} 个`);
+        if (pre / ct.length >= 0.5) {
+          console.log('  ⚠ 大部分分P为早期资产：B站可能从未为其生成 AI 字幕，扫描出现大量「无字幕」属正常现象，不是故障');
+        }
+      }
+    }
   }
 
   if (!allTargets.length) {
@@ -657,9 +671,16 @@ function summary(stat, noSubParts, poisonedParts, t0, args, manifestPath, code, 
   console.log(`${'─'.repeat(52)}`);
 
   const unit = args._unit || '分P';
+  const confirmed = cum.has_sub.length + cum.ok.length;
   if (args.scan && cum.has_sub.length) {
     console.log(`✓ 结论：有字幕。去掉 --scan 重跑即可下载全部 ${cum.has_sub.length} 个${unit}。`);
-  } else if (args.scan && !cum.has_sub.length) {
+    if (cum.poisoned.length) {
+      console.log(`  注意：另有 ${cum.poisoned.length} 个${unit}被投毒，真实情况未定 —— 重跑时才会确认（可能还有更多有字幕的）。`);
+    }
+  } else if (args.scan && !confirmed && cum.poisoned.length) {
+    console.log(`? 结论：暂未确认任何字幕，且有 ${cum.poisoned.length} 个${unit}全被投毒 —— 状态未定，被投毒≠无字幕。`);
+    console.log('  建议：隔一段时间重跑同一条 --scan 命令；已确认的会跳过，被投毒的会重新探测。');
+  } else if (args.scan && !confirmed) {
     console.log(`✗ 结论：扫描范围内没有任何${unit}带字幕 —— 这不是凭据问题，是视频本身没有。`);
   }
   if (code === 0 && stat.ok > 0) {

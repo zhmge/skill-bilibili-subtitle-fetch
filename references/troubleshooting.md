@@ -38,6 +38,18 @@ Cheap way to separate "bad credential" from "video has no subtitles": call
 `api.bilibili.com/x/web-interface/nav` with the credential. `data.isLogin === true`
 means the credential is fine and the video really is subtitle-less.
 
+A clean credential plus a run full of empty results is still not the end of it.
+Before reporting "this course has no subtitles":
+
+1. Check the `累计记录` line for `被投毒 N` — poisoned parts are undetermined,
+   not empty.
+2. Cross-check a few cids with a second TLS stack (curl.exe vs Node): the two
+   can be classified differently. See "Empty list, poisoning, and actual
+   existence" in `api-behavior.md`.
+3. Check asset age via `pages[].ctime` from the `view` response. AI subtitles
+   have only been observed on assets re-encoded in 2023-12 ~ 2024-06; a
+   2019-era course can have none at all — a fact to report, not a failure to fix.
+
 ## Risk control (exit code 5)
 
 Triggered by codes `-352`, `-412`, `-509`, `-799`. The script aborts on the spot
@@ -61,6 +73,25 @@ Two sanity figures:
 
 Both are fewer requests than scrolling the same material by hand in a browser,
 which fires thousands. Neither run triggered risk control.
+
+## A whole-run poisoning storm
+
+Normal poisoning is per-part and transient: a re-run a minute later hits. The
+other shape is a storm: nearly every part exhausts all 8 attempts, across
+minutes, at 50–75% of responses — the worst observed window ran at ~92%.
+Re-running immediately does not help; the window outlasts your patience.
+
+Response protocol:
+
+1. **Stop the run.** A full fetch inside a storm burns thousands of requests on
+   responses you will throw away. Let it save progress and wait the window out.
+2. **Probe cheaply, roughly every 60 s.** One request against a part already
+   known to have subtitles (`--scan --from A --to A`). A poisoned answer there
+   means the window is still open; an own-hit means it has closed. With nothing
+   known yet, any own-hit anywhere proves health, and persistent non-own answers
+   mean keep waiting.
+3. **Resume in chunks.** Re-run with `--from/--to` in blocks of ~40 parts, so
+   each pass is bounded and a fresh storm cannot eat an unbounded run.
 
 ## Resumption
 
