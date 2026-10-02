@@ -1,0 +1,16 @@
+# 零依赖 Node 脚本，正常不需要 node_modules
+node_modules/
+
+# 运行 / 调试产物
+*.log
+output/
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+
+# 说明：刻意不排除 *.srt —— 将来若需要提交样例字幕，可直接加进来。
+# 实际抓取产物建议放在 --out 指定的临时目录，不要提交。
